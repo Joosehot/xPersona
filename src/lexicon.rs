@@ -33,6 +33,7 @@ pub enum Part {
     Head,
     Hands,
     Feet,
+    Face,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -147,6 +148,8 @@ const WORDS: &[(&str, Tok)] = &[
     ("head", Tok::Part(Part::Head)),
     ("hands", Tok::Part(Part::Hands)),
     ("feet", Tok::Part(Part::Feet)),
+    ("face", Tok::Part(Part::Face)),
+    ("pretty", Tok::Ideal),
     ("long", Tok::Adj(Adj::Long)),
     ("broad", Tok::Adj(Adj::Broad)),
     ("wide", Tok::Adj(Adj::Broad)),

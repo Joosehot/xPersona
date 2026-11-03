@@ -28,6 +28,8 @@
   <button data-view="side">Side</button>
   <button data-view="back">Back</button>
   <button data-view="three">3/4</button>
+  <button data-view="face">Face</button>
+  <button data-view="face3">Face 3/4</button>
   <span id="name2" class="muted">drop a .glb here, or ?file=path</span>
 </div>
 <script type="module">
@@ -60,9 +62,10 @@ const controls = new OrbitControls(camera, renderer.domElement);
 let height = 1.7;
 
 function view(name) {
-  const t = new THREE.Vector3(0, height * 0.52, 0);
-  const d = height * 2.3;
-  const dir = { front: [0, 0, 1], side: [1, 0, 0], back: [0, 0, -1], three: [0.7, 0.1, 0.7] }[name] || [0, 0, 1];
+  const face = name.startsWith("face");
+  const t = new THREE.Vector3(0, height * (face ? 0.93 : 0.52), 0);
+  const d = height * (name === "faceclose" ? 0.12 : face ? 0.32 : 2.3);
+  const dir = { front: [0, 0, 1], side: [1, 0, 0], back: [0, 0, -1], three: [0.7, 0.1, 0.7], face: [0, 0, 1], faceclose: [0, 0, 1], face3: [0.6, 0, 0.8], faceside: [1, 0, 0] }[name] || [0, 0, 1];
   camera.position.set(dir[0] * d, t.y + dir[1] * d, dir[2] * d);
   controls.target.copy(t);
   controls.update();

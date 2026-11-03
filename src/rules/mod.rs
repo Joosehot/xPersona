@@ -5,6 +5,7 @@ use crate::lexicon::{Adj, Sex};
 use crate::parser::{PartMod, Request};
 
 mod build;
+mod face;
 mod fat;
 mod head;
 mod ideal;
@@ -39,6 +40,9 @@ pub struct Spec {
     pub pose_deg: f64,
     /// MakeHuman's proportions value, 0.5 uncommon to 1 ideal
     pub ideal: f64,
+    /// the face: which individual one, and how far from the average face (1 as drawn)
+    pub face_seed: u64,
+    pub face_scale: f64,
     /// what each rule did, with the rule's name
     pub steps: Vec<(String, &'static str)>,
 }
@@ -62,6 +66,8 @@ impl Spec {
             defined: false,
             pose_deg: 0.0,
             ideal: 0.75,
+            face_seed: 0,
+            face_scale: 1.0,
             steps: Vec::new(),
         }
     }
@@ -114,6 +120,7 @@ pub fn all() -> Vec<Box<dyn Rule>> {
         Box::new(parts::Parts),
         Box::new(tone::Tone),
         Box::new(head::Head),
+        Box::new(face::Face),
         Box::new(pose::PoseRule),
     ]
 }

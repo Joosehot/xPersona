@@ -1,53 +1,65 @@
-//! The mesh as a binary glTF 2.0 file (.glb), which Blender, game engines and browsers open.
+//! The meshes as one binary glTF 2.0 file (.glb), which Blender, game engines and browsers open.
 use crate::mesh::Mesh;
-use serde_json::json;
+use serde_json::{json, Value};
 
-pub fn write(mesh: &Mesh, color: [f64; 3], name: &str) -> Vec<u8> {
+/// one mesh of the file, with its colour, or a colour per vertex
+pub struct Part<'a> {
+    pub name: &'a str,
+    pub mesh: &'a Mesh,
+    pub color: [f64; 3],
+    pub colors: Option<&'a [[f32; 3]]>,
+}
+
+pub fn write(parts: &[Part]) -> Vec<u8> {
     let mut bin = Vec::new();
-    for p in &mesh.pos {
-        for c in p {
-            bin.extend_from_slice(&c.to_le_bytes());
+    let (mut views, mut accessors, mut meshes, mut materials, mut nodes) = (Vec::<Value>::new(), Vec::<Value>::new(), Vec::new(), Vec::new(), Vec::new());
+    let mut view = |bin: &mut Vec<u8>, bytes: Vec<u8>, target: u32| {
+        let at = bin.len();
+        bin.extend_from_slice(&bytes);
+        while bin.len() % 4 != 0 {
+            bin.push(0);
         }
-    }
-    let nrm_at = bin.len();
-    for n in &mesh.nrm {
-        for c in n {
-            bin.extend_from_slice(&c.to_le_bytes());
+        views.push(json!({ "buffer": 0, "byteOffset": at, "byteLength": bytes.len(), "target": target }));
+        views.len() - 1
+    };
+    let floats = |xs: &[[f32; 3]]| xs.iter().flatten().flat_map(|c| c.to_le_bytes()).collect::<Vec<u8>>();
+    for (k, p) in parts.iter().enumerate() {
+        let m = p.mesh;
+        let (mut lo, mut hi) = ([f32::MAX; 3], [f32::MIN; 3]);
+        for q in &m.pos {
+            for a in 0..3 {
+                lo[a] = lo[a].min(q[a]);
+                hi[a] = hi[a].max(q[a]);
+            }
         }
-    }
-    let idx_at = bin.len();
-    for i in &mesh.idx {
-        bin.extend_from_slice(&i.to_le_bytes());
-    }
-    while bin.len() % 4 != 0 {
-        bin.push(0);
-    }
-    let (mut lo, mut hi) = ([f32::MAX; 3], [f32::MIN; 3]);
-    for p in &mesh.pos {
-        for a in 0..3 {
-            lo[a] = lo[a].min(p[a]);
-            hi[a] = hi[a].max(p[a]);
+        let n = m.pos.len();
+        let pv = view(&mut bin, floats(&m.pos), 34962);
+        accessors.push(json!({ "bufferView": pv, "componentType": 5126, "count": n, "type": "VEC3", "min": lo, "max": hi }));
+        let nv = view(&mut bin, floats(&m.nrm), 34962);
+        accessors.push(json!({ "bufferView": nv, "componentType": 5126, "count": n, "type": "VEC3" }));
+        let mut attributes = json!({ "POSITION": accessors.len() - 2, "NORMAL": accessors.len() - 1 });
+        if let Some(cs) = p.colors {
+            let cv = view(&mut bin, floats(cs), 34962);
+            accessors.push(json!({ "bufferView": cv, "componentType": 5126, "count": n, "type": "VEC3" }));
+            attributes["COLOR_0"] = json!(accessors.len() - 1);
         }
+        let iv = view(&mut bin, m.idx.iter().flat_map(|i| i.to_le_bytes()).collect(), 34963);
+        accessors.push(json!({ "bufferView": iv, "componentType": 5125, "count": m.idx.len(), "type": "SCALAR" }));
+        let c = if p.colors.is_some() { [1.0, 1.0, 1.0] } else { p.color };
+        materials.push(json!({ "name": p.name, "pbrMetallicRoughness": { "baseColorFactor": [c[0], c[1], c[2], 1.0], "metallicFactor": 0.0, "roughnessFactor": if p.colors.is_some() { 0.3 } else { 0.65 } } }));
+        meshes.push(json!({ "name": p.name, "primitives": [{ "attributes": attributes, "indices": accessors.len() - 1, "material": k }] }));
+        nodes.push(json!({ "mesh": k, "name": p.name }));
     }
-    let n = mesh.pos.len();
     let doc = json!({
         "asset": { "version": "2.0", "generator": "xPersona v0" },
         "scene": 0,
-        "scenes": [{ "nodes": [0] }],
-        "nodes": [{ "mesh": 0, "name": name }],
-        "meshes": [{ "name": name, "primitives": [{ "attributes": { "POSITION": 0, "NORMAL": 1 }, "indices": 2, "material": 0 }] }],
-        "materials": [{ "name": "clay", "pbrMetallicRoughness": { "baseColorFactor": [color[0], color[1], color[2], 1.0], "metallicFactor": 0.0, "roughnessFactor": 0.65 } }],
+        "scenes": [{ "nodes": (0..parts.len()).collect::<Vec<_>>() }],
+        "nodes": nodes,
+        "meshes": meshes,
+        "materials": materials,
         "buffers": [{ "byteLength": bin.len() }],
-        "bufferViews": [
-            { "buffer": 0, "byteOffset": 0, "byteLength": nrm_at, "target": 34962 },
-            { "buffer": 0, "byteOffset": nrm_at, "byteLength": idx_at - nrm_at, "target": 34962 },
-            { "buffer": 0, "byteOffset": idx_at, "byteLength": mesh.idx.len() * 4, "target": 34963 }
-        ],
-        "accessors": [
-            { "bufferView": 0, "componentType": 5126, "count": n, "type": "VEC3", "min": lo, "max": hi },
-            { "bufferView": 1, "componentType": 5126, "count": n, "type": "VEC3" },
-            { "bufferView": 2, "componentType": 5125, "count": mesh.idx.len(), "type": "SCALAR" }
-        ]
+        "bufferViews": views,
+        "accessors": accessors
     });
     let mut text = serde_json::to_vec(&doc).expect("json");
     while text.len() % 4 != 0 {

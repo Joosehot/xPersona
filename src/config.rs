@@ -116,6 +116,10 @@ pub struct LearnedCfg {
     pub head_weight: f64,
     /// MakeHuman's proportions value: unasked, "beautiful", "very beautiful"
     pub proportions: [f64; 3],
+    /// a beautiful face's distance from the average face, against an individual one's (squared with "very")
+    pub face_average: f64,
+    /// the iris, linear RGB
+    pub iris: [f64; 3],
     pub defined_muscle: f64,
     pub tolerance_mm: f64,
 }
@@ -158,7 +162,7 @@ const NEEDED: &[(&str, &[&str])] = &[
     ("pose", &["a_pose", "t_pose"]),
     ("proportions", &["long_legs", "long_torso"]),
     ("build", &["thin", "slim", "lean", "average", "athletic", "muscular", "stocky", "curvy", "heavy"]),
-    ("judges", &["hourglass_on_a_man", "pear_on_a_man", "v_taper_on_a_woman", "asked_broad_shoulders", "asked_broad_hips", "asked_narrow_waist", "defined_and_heavy", "smooth_and_muscular", "against_the_asked_legs"]),
+    ("judges", &["hourglass_on_a_man", "pear_on_a_man", "v_taper_on_a_woman", "asked_broad_shoulders", "asked_broad_hips", "asked_narrow_waist", "defined_and_heavy", "smooth_and_muscular", "against_the_asked_legs", "narrow_waist_on_a_heavy_body"]),
 ];
 
 impl Config {

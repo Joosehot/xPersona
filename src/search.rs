@@ -50,6 +50,10 @@ fn judges(r: &Request, c: &Config, rules: &[Box<dyn Rule>], choices: &[&'static 
             ("v_taper", Sex::Female) if r.build() != Build::Muscular => add("v_taper_on_a_woman", "a V-taper on a woman's frame"),
             _ => {}
         }
+        // a heavy or stocky body's waist widens with its fat: in MakeHuman's bodies as in people
+        if matches!(t, "hourglass" | "v_taper") && matches!(r.build(), Build::Heavy | Build::Stocky) {
+            add("narrow_waist_on_a_heavy_body", "a narrow waist on a heavy body");
+        }
         if t == "v_taper" && asked(Part::Shoulders, Adj::Broad) {
             add("asked_broad_shoulders", "a V-taper for the broad shoulders asked");
         }

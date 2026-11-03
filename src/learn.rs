@@ -12,14 +12,16 @@ use neuras::train::net::Model;
 use std::path::Path;
 
 pub const MODEL: &str = "model/persona.bin";
-/// sex, muscle, weight, the measures, the head shapes, MakeHuman's proportions
-pub const INPUTS: usize = 3 + NAMES.len() + HEADS.len() + 1;
-const K: usize = 48;
+/// sex, muscle, weight, the measures, the head shapes, MakeHuman's proportions; then the face modifiers
+pub const BODY_INPUTS: usize = 3 + NAMES.len() + HEADS.len() + 1;
+const K: usize = 96;
+/// a face modifier's spread in the training faces: two uniforms, so most faces are near the average
+pub const FACE_SPREAD: f64 = 0.35;
 const OVERSAMPLE: usize = 16;
 const HIDDEN: usize = 256;
-const EPOCHS: usize = 120;
+const EPOCHS: usize = 60;
 const BATCH: usize = 64;
-const JOINTS: [&str; 6] = ["l-shoulder", "l-elbow", "l-hand", "l-upper-leg", "neck", "jaw"];
+const JOINTS: [&str; 8] = ["l-shoulder", "l-elbow", "l-hand", "l-upper-leg", "neck", "jaw", "l-eye", "l-eye-target"];
 
 struct Rng(u64);
 impl Rng {
@@ -48,7 +50,7 @@ pub fn shape_ids(b: &Base) -> Vec<u32> {
     ids
 }
 
-fn random_params(seed: u64) -> Params {
+fn random_params(seed: u64, faces: usize) -> Params {
     let mut r = Rng(seed.wrapping_mul(0x2545F4914F6CDD1D) ^ 0xA5A5);
     let e = [r.unit() + 0.05, r.unit() + 0.05, r.unit() + 0.05];
     let s: f64 = e.iter().sum();
@@ -63,7 +65,14 @@ fn random_params(seed: u64) -> Params {
         ethnic: e.map(|x| x / s),
         measures: MEASURES.iter().map(|_| (r.unit() * 2.0 - 1.0) * 0.6).collect(),
         heads,
+        face: random_face(seed ^ 0xFACE, faces),
     }
+}
+
+/// a face: every modifier drawn from the training faces' spread
+pub fn random_face(seed: u64, n: usize) -> Vec<f64> {
+    let mut r = Rng(seed.wrapping_mul(0x9E3779B97F4A7C15) ^ 0x5EED);
+    (0..n).map(|_| (r.unit() + r.unit() - 1.0) * FACE_SPREAD * 2.0).collect()
 }
 
 /// a body standing on the floor, centred, at unit height
@@ -79,11 +88,12 @@ fn normalised(verts: &[V3], ids: &[u32], body_n: usize) -> (Vec<f32>, f64) {
     (out, h)
 }
 
-pub fn inputs(gender: f64, muscle: f64, weight: f64, ratios: &[f64; 9], heads: &[f64; 4], proportions: f64) -> Vec<f64> {
+pub fn inputs(gender: f64, muscle: f64, weight: f64, ratios: &[f64; 9], heads: &[f64; 4], proportions: f64, face: &[f64]) -> Vec<f64> {
     let mut x = vec![gender, muscle, weight];
     x.extend_from_slice(ratios);
     x.extend_from_slice(heads);
     x.push(proportions);
+    x.extend_from_slice(face);
     x
 }
 
@@ -142,8 +152,8 @@ fn eigen(mut a: Vec<Vec<f64>>) -> (Vec<f64>, Vec<Vec<f64>>) {
 }
 
 /// the network's design: inputs, two hidden layers, the components
-fn net() -> Net {
-    Net::build(Shape::Vector(INPUTS), vec![Layer::Dense { out: HIDDEN }, Layer::Relu, Layer::Dense { out: HIDDEN }, Layer::Relu, Layer::Dense { out: K }]).expect("an mlp")
+fn net(inputs: usize) -> Net {
+    Net::build(Shape::Vector(inputs), vec![Layer::Dense { out: HIDDEN }, Layer::Relu, Layer::Dense { out: HIDDEN }, Layer::Relu, Layer::Dense { out: K }]).expect("an mlp")
 }
 
 /// the frozen model
@@ -157,6 +167,10 @@ pub struct Learned {
     pub in_std: Vec<f64>,
     /// the measures expected for sex, muscle, weight and proportions: per measure, coefficients on [1, g, m, w, gm, gw, mw, p]
     pub baseline: Vec<[f64; TERMS]>,
+    /// what the training bodies measure, per bin of sex, muscle and weight: for each measure the 5th and 95th percentile
+    pub reach: Vec<[[f64; 2]; 9]>,
+    /// how far a made body measures from the measures it was given, on bodies never seen: the 95th percentile, per measure
+    pub fidelity: Vec<f64>,
     pub model: Model,
     pub report: String,
     /// the body's quads, and the joints the measures read, as positions in the shape
@@ -166,6 +180,13 @@ pub struct Learned {
 }
 
 const TERMS: usize = 8;
+/// bins per value (sex, muscle, weight) for the reach
+const BINS: usize = 5;
+
+pub fn bin(g: f64, m: f64, w: f64) -> usize {
+    let b = |x: f64| ((x * BINS as f64) as usize).min(BINS - 1);
+    (b(g) * BINS + b(m)) * BINS + b(w)
+}
 
 fn terms(g: f64, m: f64, w: f64, p: f64) -> [f64; TERMS] {
     [1.0, g, m, w, g * m, g * w, m * w, p]
@@ -211,6 +232,8 @@ impl Learned {
         put(&self.in_mean.iter().map(|x| *x as f32).collect::<Vec<_>>());
         put(&self.in_std.iter().map(|x| *x as f32).collect::<Vec<_>>());
         put(&self.baseline.iter().flatten().map(|x| *x as f32).collect::<Vec<_>>());
+        put(&self.reach.iter().flatten().flatten().map(|x| *x as f32).collect::<Vec<_>>());
+        put(&self.fidelity.iter().map(|x| *x as f32).collect::<Vec<_>>());
         for p in &self.model.params {
             put(p);
         }
@@ -242,11 +265,13 @@ impl Learned {
         let mean = get()?;
         let basis = (0..K).map(|_| get()).collect::<Result<Vec<_>, _>>()?;
         let scale = get()?;
-        let in_mean = get()?.into_iter().map(|x| x as f64).collect();
+        let in_mean: Vec<f64> = get()?.into_iter().map(|x| x as f64).collect();
         let in_std = get()?.into_iter().map(|x| x as f64).collect();
         let flat = get()?;
         let baseline = flat.chunks(TERMS).map(|c| std::array::from_fn(|i| c[i] as f64)).collect();
-        let mut model = Model::new(&net(), 0);
+        let reach = get()?.chunks(18).map(|c| std::array::from_fn(|i| [c[2 * i] as f64, c[2 * i + 1] as f64])).collect();
+        let fidelity = get()?.into_iter().map(|x| x as f64).collect();
+        let mut model = Model::new(&net(in_mean.len()), 0);
         for p in model.params.iter_mut() {
             let x = get()?;
             if x.len() != p.len() {
@@ -259,7 +284,7 @@ impl Learned {
         let joints = JOINTS.iter().map(|j| Ok((j.to_string(), get()?.into_iter().map(|x| x as u32).collect()))).collect::<Result<Vec<_>, String>>()?;
         let n = u32::from_le_bytes(b.get(at..at + 4).ok_or("the model file is cut short")?.try_into().unwrap()) as usize;
         let report = String::from_utf8_lossy(&b[at + 4..at + 4 + n]).into_owned();
-        Ok(Learned { mean, basis, scale, in_mean, in_std, baseline, model, report, quads, joints, body_n })
+        Ok(Learned { mean, basis, scale, in_mean, in_std, baseline, reach, fidelity, model, report, quads, joints, body_n })
     }
 
     /// the vertices at this height (metres), as a Base the measures can read
@@ -277,14 +302,16 @@ pub fn train(n: usize, log: &mut dyn FnMut(String)) -> Result<Learned, String> {
     let targets = Targets::load(root)?;
     let ids = shape_ids(&base);
     let d = ids.len() * 3;
+    let faces = targets.face.len();
+    let inputs_n = BODY_INPUTS + faces;
 
     // the bodies, measured
     let made: Vec<(Vec<f32>, Vec<f64>, f64)> = par(n, |i| {
-        let p = random_params(i as u64);
+        let p = random_params(i as u64, faces);
         let verts = targets.compose(&base, &p);
         let m = measure(&base, &verts);
         let (shape, h) = normalised(&verts, &ids, base.body_n);
-        (shape, inputs(p.gender, p.muscle, p.weight, &m.ratios, &p.heads, p.proportions), h)
+        (shape, inputs(p.gender, p.muscle, p.weight, &m.ratios, &p.heads, p.proportions, &p.face), h)
     });
     log(format!("{n} bodies made and measured from MakeHuman's targets ({:.0} s)", t0.elapsed().as_secs_f64()));
     let held = n / 10;
@@ -379,8 +406,8 @@ pub fn train(n: usize, log: &mut dyn FnMut(String)) -> Result<Learned, String> {
     let targets_k: Vec<Vec<f32>> = par(n, |i| coeffs(&made[i].0));
 
     // inputs, standardised on the learning bodies
-    let in_mean: Vec<f64> = (0..INPUTS).map(|j| made[..learn].iter().map(|m| m.1[j]).sum::<f64>() / learn as f64).collect();
-    let in_std: Vec<f64> = (0..INPUTS).map(|j| (made[..learn].iter().map(|m| (m.1[j] - in_mean[j]).powi(2)).sum::<f64>() / learn as f64).sqrt().max(1e-9)).collect();
+    let in_mean: Vec<f64> = (0..inputs_n).map(|j| made[..learn].iter().map(|m| m.1[j]).sum::<f64>() / learn as f64).collect();
+    let in_std: Vec<f64> = (0..inputs_n).map(|j| (made[..learn].iter().map(|m| (m.1[j] - in_mean[j]).powi(2)).sum::<f64>() / learn as f64).sqrt().max(1e-9)).collect();
     let z: Vec<Vec<f32>> = made.iter().map(|m| m.1.iter().zip(&in_mean).zip(&in_std).map(|((x, mu), s)| ((x - mu) / s) as f32).collect()).collect();
 
     // the measures expected for sex, muscle and weight (least squares)
@@ -388,7 +415,7 @@ pub fn train(n: usize, log: &mut dyn FnMut(String)) -> Result<Learned, String> {
     for j in 0..NAMES.len() {
         let mut a = [[0f64; TERMS + 1]; TERMS];
         for m in &made[..learn] {
-            let t = terms(m.1[0], m.1[1], m.1[2], m.1[INPUTS - 1]);
+            let t = terms(m.1[0], m.1[1], m.1[2], m.1[BODY_INPUTS - 1]);
             for p in 0..TERMS {
                 for q in 0..TERMS {
                     a[p][q] += t[p] * t[q];
@@ -410,9 +437,27 @@ pub fn train(n: usize, log: &mut dyn FnMut(String)) -> Result<Learned, String> {
         }
         baseline.push(std::array::from_fn(|p| a[p][TERMS] / a[p][p]));
     }
+    let mut binned: Vec<Vec<&Vec<f64>>> = vec![Vec::new(); BINS * BINS * BINS];
+    for m in &made[..learn] {
+        binned[bin(m.1[0], m.1[1], m.1[2])].push(&m.1);
+    }
+    let reach: Vec<[[f64; 2]; 9]> = binned
+        .iter()
+        .map(|bodies| {
+            std::array::from_fn(|j| {
+                let mut xs: Vec<f64> = bodies.iter().map(|x| x[3 + j]).collect();
+                xs.sort_by(f64::total_cmp);
+                if xs.is_empty() {
+                    return [0.0, f64::MAX];
+                }
+                let at = |q: f64| xs[((xs.len() - 1) as f64 * q).round() as usize];
+                [at(0.05), at(0.95)]
+            })
+        })
+        .collect();
 
     // the network, designed and trained with Neuras
-    let design = net();
+    let design = net(inputs_n);
     let mut model = Model::new(&design, 7);
     let mut order: Vec<usize> = (0..learn).collect();
     let mut rr = Rng(99);
@@ -465,9 +510,24 @@ pub fn train(n: usize, log: &mut dyn FnMut(String)) -> Result<Learned, String> {
             (j.to_string(), ids)
         })
         .collect();
-    let mut learned = Learned { mean, basis, scale, in_mean, in_std, baseline, model, report: String::new(), quads: base.quads.clone(), joints, body_n: base.body_n };
+    let mut learned = Learned { mean, basis, scale, in_mean, in_std, baseline, reach, fidelity: Vec::new(), model, report: String::new(), quads: base.quads.clone(), joints, body_n: base.body_n };
     // judged on the held-out bodies, in millimetres at their own height
-    let errs: Vec<(f64, f64, f64)> = par(held, |j| {
+    // each measure on the unseen bodies: the network's body measured against the measures it was given
+    let misses: Vec<[f64; 9]> = par(held, |j| {
+        let x = &made[learn + j].1;
+        let body = learned.body(&learned.shape(x), 1.0);
+        let got = measure(&body, &body.verts);
+        std::array::from_fn(|i| (got.ratios[i] - x[3 + i]).abs())
+    });
+    learned.fidelity = (0..NAMES.len())
+        .map(|i| {
+            let mut xs: Vec<f64> = misses.iter().map(|m| m[i]).collect();
+            xs.sort_by(f64::total_cmp);
+            xs[((xs.len() - 1) as f64 * 0.95).round() as usize]
+        })
+        .collect();
+    log(format!("each measure on unseen bodies, 95% within (mm on a 1.7 m body): {}", NAMES.iter().zip(&learned.fidelity).map(|(n, f)| format!("{n} {:.0}", f * 1700.0)).collect::<Vec<_>>().join(", ")));
+    let errs: Vec<[f64; 5]> = par(held, |j| {
         let i = learn + j;
         let (s, x, h) = (&made[i].0, &made[i].1, made[i].2);
         let pred = learned.shape(x);
@@ -481,15 +541,28 @@ pub fn train(n: usize, log: &mut dyn FnMut(String)) -> Result<Learned, String> {
             }
             o
         };
-        let err = |a: &[f32]| a.chunks(3).zip(s.chunks(3)).map(|(p, q)| ((p[0] - q[0]).powi(2) + (p[1] - q[1]).powi(2) + (p[2] - q[2]).powi(2)).sqrt() as f64).sum::<f64>() / (a.len() / 3) as f64 * h * 1000.0;
-        (err(&pred), err(&floor), err(&learned.mean))
+        // the whole body, and the face alone: the skin in front of the ears, above the chin
+        let err = |a: &[f32], face: bool| {
+            let (mut sum, mut k) = (0.0, 0usize);
+            for (p, q) in a[..learned.body_n * 3].chunks(3).zip(s.chunks(3)) {
+                if face && !(q[1] > 0.88 && q[2] > 0.03) {
+                    continue;
+                }
+                sum += ((p[0] - q[0]).powi(2) + (p[1] - q[1]).powi(2) + (p[2] - q[2]).powi(2)).sqrt() as f64;
+                k += 1;
+            }
+            sum / k.max(1) as f64 * h * 1000.0
+        };
+        [err(&pred, false), err(&floor, false), err(&learned.mean, false), err(&pred, true), err(&learned.mean, true)]
     });
-    let avg = |f: fn(&(f64, f64, f64)) -> f64| errs.iter().map(f).sum::<f64>() / held as f64;
+    let avg = |k: usize| errs.iter().map(|e| e[k]).sum::<f64>() / held as f64;
     learned.report = format!(
-        "trained on {learn} MakeHuman bodies, judged on {held} it never saw: mean vertex error {:.1} mm (the {K} components alone could reach {:.1} mm; the average body is {:.1} mm off)",
-        avg(|e| e.0),
-        avg(|e| e.1),
-        avg(|e| e.2)
+        "trained on {learn} MakeHuman bodies with {faces} face modifiers, judged on {held} it never saw: mean vertex error {:.1} mm (the {K} components alone could reach {:.1} mm; the average body is {:.1} mm off); the face {:.2} mm (the average face {:.2} mm off)",
+        avg(0),
+        avg(1),
+        avg(2),
+        avg(3),
+        avg(4)
     );
     log(learned.report.clone());
     Ok(learned)

@@ -30,6 +30,8 @@ pub struct Request {
     pub profile: Vec<Said<Axis>>,
     /// "beautiful": 1, or 2 with "very"
     pub ideal: Option<Said<f64>>,
+    /// "a beautiful face", or "beautiful" for the whole person: 1, or 2 with "very"
+    pub face_ideal: Option<Said<f64>>,
 }
 
 impl Request {
@@ -64,6 +66,7 @@ pub fn takes(part: Part) -> &'static [Adj] {
         Part::Waist => &[Broad, Narrow, Thin, Thick],
         Part::Head => &[Round, Oval, Long, Square, Big, Small],
         Part::Hands | Part::Feet => &[Big, Small, Long],
+        Part::Face => &[],
     }
 }
 
@@ -210,10 +213,23 @@ pub fn parse(sentence: &str) -> Result<Request, Error> {
                     }
                     Tok::Profile(a) => r.profile.push(Said { value: *a, words: said.join(" ") }),
                     Tok::Ideal => {
+                        // "a beautiful face" is the face's; "beautiful" alone is the whole person's
+                        if let Some((pw, Part::Face)) = next_part(i + 1) {
+                            if r.face_ideal.is_some() {
+                                return Err(err(format!("\"{w} {pw}\": the face is described twice"), "say it once"));
+                            }
+                            said.push(pw);
+                            r.face_ideal = Some(Said { value: strength, words: said.join(" ") });
+                            i += 2;
+                            continue;
+                        }
                         if r.ideal.is_some() {
                             return Err(err(format!("\"{w}\": said twice"), "say it once"));
                         }
                         r.ideal = Some(Said { value: strength, words: said.join(" ") });
+                        if r.face_ideal.is_none() {
+                            r.face_ideal = Some(Said { value: strength, words: said.join(" ") });
+                        }
                     }
                     Tok::Adj(_) => return Err(err(format!("\"{w}\" what?"), "an adjective goes before a part: \"long arms\", \"broad shoulders\"")),
                     Tok::Part(_) => return Err(err(format!("\"{w}\" without saying how"), format!("say how, e.g. \"long {w}\""))),
@@ -262,6 +278,14 @@ mod tests {
     fn beautiful_is_read_with_its_strength() {
         assert_eq!(parse("a very beautiful woman").unwrap().ideal.unwrap().value, 2.0);
         assert!(parse("a woman").unwrap().ideal.is_none());
+    }
+
+    #[test]
+    fn a_beautiful_face_is_the_face_alone() {
+        let r = parse("a woman with a beautiful face").unwrap();
+        assert!(r.ideal.is_none() && r.face_ideal.is_some());
+        let r = parse("a beautiful woman").unwrap();
+        assert!(r.ideal.is_some() && r.face_ideal.is_some());
     }
 
     #[test]

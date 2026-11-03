@@ -64,6 +64,11 @@ pub fn make(sentence: &str, c: &Config, learned: Option<&learn::Learned>, explai
                     text: format!("\"{}\" moved the skin {moved:.1} mm on average from the same body unasked; legs {:+.0} mm, shoulders {:+.0} mm, chest {:+.0} mm, waist {:+.0} mm, hips {:+.0} mm", k.words, d(0), d(2), d(3), d(4), d(6)),
                 });
             }
+            // the face, measured from the average face (and, when beauty was asked, against the same person's unasked)
+            checks.push(match (made.plain_face_mm, &r.face_ideal) {
+                (Some(p), Some(k)) => checks::Check { ok: made.face_mm < p, name: "face", text: format!("\"{}\": the face is {:.2} mm from the average face on average, the same person's unasked {p:.2} mm", k.words, made.face_mm) },
+                _ => checks::Check { ok: true, name: "face", text: format!("an individual face, {:.2} mm from the average face on average", made.face_mm) },
+            });
             // the arm span as the made body has it: shoulder to shoulder, and each arm to the fingertip
             let span = made.got.ratios[2] + 2.0 * made.got.ratios[1];
             let [a, b] = c.ranges.arm_span;
@@ -71,12 +76,14 @@ pub fn make(sentence: &str, c: &Config, learned: Option<&learn::Learned>, explai
                 *k = checks::Check { ok: (a..=b).contains(&span), name: "arm span", text: format!("measured {span:.3} of the height (a body: {a} to {b})") };
             }
             // the body made, measured, against what was asked of it
+            // each measure may miss by what the network misses on bodies it never saw (95th percentile), at least tolerance_mm
+            let allowed = |i: usize| (l.fidelity[i] * s.h * 1000.0).max(c.learned.tolerance_mm);
             let devs: Vec<(usize, f64)> = (0..measure::NAMES.len()).map(|i| (i, (made.got.ratios[i] - made.asked[i]) * s.h * 1000.0)).collect();
-            let worst = devs.iter().cloned().fold((0, 0.0f64), |a, b| if b.1.abs() > a.1.abs() { b } else { a });
+            let worst = devs.iter().cloned().fold((0, f64::MIN), |a, b| if b.1.abs() / allowed(b.0) > a.1.abs() / allowed(a.0) || a.1 == f64::MIN { b } else { a });
             checks.push(checks::Check {
-                ok: worst.1.abs() <= c.learned.tolerance_mm,
+                ok: devs.iter().all(|(i, d)| d.abs() <= allowed(*i)),
                 name: "as asked",
-                text: format!("the made body measured: every measure within {:.0} mm of the asked one, the farthest {} at {:+.1} mm", c.learned.tolerance_mm, measure::NAMES[worst.0], worst.1),
+                text: format!("the made body measured against the asked one: the nearest to its limit {} at {:+.1} mm (allowed {:.0} mm: what the network misses on unseen bodies, 95%)", measure::NAMES[worst.0], worst.1, allowed(worst.0)),
             });
             if let Some(bad) = checks.iter().find(|k| !k.ok) {
                 why_not.push(format!("{}: {}: {}", path.choices.join(" "), bad.name, bad.text));
@@ -88,7 +95,11 @@ pub fn make(sentence: &str, c: &Config, learned: Option<&learn::Learned>, explai
             }
             let mut text = describe(&r, &s, &made.mesh, &checks, path, &paths, 0.0, explain);
             text += &format!("  model: {}\n", l.report);
-            return Ok(Made { text, glb: glb::write(&made.mesh, c.mesh.color, "xPersona") });
+            let glb = glb::write(&[
+                glb::Part { name: "body", mesh: &made.mesh, color: c.mesh.color, colors: None },
+                glb::Part { name: "eyes", mesh: &made.eyes, color: [1.0; 3], colors: Some(&made.eye_colors) },
+            ]);
+            return Ok(Made { text, glb });
         }
         if let Some(k) = &r.ideal {
             return Err(Failure { what: format!("\"{}\" without the learned body", k.words), hint: "the ideal proportions are MakeHuman's; drop --sculpt".into() });
@@ -105,7 +116,7 @@ pub fn make(sentence: &str, c: &Config, learned: Option<&learn::Learned>, explai
                 }
                 continue;
             }
-            return Ok(Made { text: describe(&r, &s, &m, &checks, path, &paths, cell, explain), glb: glb::write(&m, c.mesh.color, "xPersona") });
+            return Ok(Made { text: describe(&r, &s, &m, &checks, path, &paths, cell, explain), glb: glb::write(&[glb::Part { name: "body", mesh: &m, color: c.mesh.color, colors: None }]) });
         }
     }
     Err(Failure { what: format!("no way to build \"{}\" passes the checks", r.sentence), hint: why_not.last().cloned().unwrap_or_default() })

@@ -3,10 +3,10 @@
 
 [search]
 beam = 12
-finalists = 4
+finalists = 8
 
 [profile]
-# definition · softness · balance
+# definition Â· softness Â· balance
 default = [0.3, 0.3, 0.4]
 # how far a word moves the profile
 word = 0.5
@@ -112,7 +112,7 @@ makehuman = [0.6, 0.75]
 girth = 1.04
 muscle = 0.2
 fat = 0.6
-makehuman = [0.4, 0.7]
+makehuman = [0.4, 0.55]
 [build.heavy]
 girth = 1.14
 muscle = 0.3
@@ -129,7 +129,7 @@ detail = 0.005
 cells = [0.006, 0.005, 0.007]
 color = [0.78, 0.72, 0.66]
 
-# Each rule's variants, scored on definition · softness · balance.
+# Each rule's variants, scored on definition Â· softness Â· balance.
 [variants.proportions]
 even = [0.2, 0.2, 0.9]
 long_legs = [0.5, 0.2, 0.5]
@@ -160,15 +160,15 @@ square = [0.8, 0.1, 0.4]
 a_pose = [0.4, 0.4, 0.9]
 t_pose = [0.4, 0.4, 0.5]
 
-# how each torso shape changes chest · waist · hips
+# how each torso shape changes chest Â· waist Â· hips
 [torso]
 straight = [1.0, 1.06, 1.0]
 v_taper = [1.06, 0.95, 0.97]
 pear = [0.96, 1.0, 1.06]
-hourglass = [1.03, 0.88, 1.04]
+hourglass = [1.03, 0.93, 1.04]
 
 [head]
-# width · depth · jaw width, fractions of height (the head's height is the chain's)
+# width Â· depth Â· jaw width, fractions of height (the head's height is the chain's)
 oval = [0.0, 0.0, 0.036]
 round = [0.006, -0.004, 0.040]
 long = [-0.004, 0.0, 0.033]
@@ -193,6 +193,7 @@ asked_narrow_waist = 0.4
 defined_and_heavy = -0.6
 smooth_and_muscular = -0.8
 against_the_asked_legs = -0.5
+narrow_waist_on_a_heavy_body = -0.6
 
 # what a human body can be: the checks hold every result to these
 [ranges]
@@ -206,7 +207,11 @@ heads = [6.6, 8.6]
 head_weight = 0.7
 # MakeHuman's proportions value (0.5 uncommon .. 1 ideal): unasked (the training bodies' mean), "beautiful", "very beautiful"
 proportions = [0.75, 0.95, 1.0]
+# a beautiful face keeps this share of an individual face's distance from the average face ("very": its square)
+face_average = 0.35
+# the iris colour, linear RGB (hazel)
+iris = [0.20, 0.12, 0.05]
 # MakeHuman muscle added when the tone is "defined"
 defined_muscle = 0.1
-# how far a made measure may be from the asked one, millimetres
+# the least a made measure may miss the asked one by, millimetres (the network's own misses on unseen bodies can allow more)
 tolerance_mm = 20.0

@@ -92,6 +92,8 @@ pub struct Params {
     pub measures: Vec<f64>,
     /// head shapes, 0..1 each, in HEADS order
     pub heads: [f64; 4],
+    /// face modifiers, -1..1 each, in Targets::face order; a left one moves the right one the same
+    pub face: Vec<f64>,
 }
 
 pub const MEASURES: &[&str] = &[
@@ -114,6 +116,50 @@ fn tri(x: f64) -> [f64; 3] {
 /// every target a body can use, loaded once
 pub struct Targets {
     by_name: HashMap<String, Target>,
+    /// the face modifiers: each a target for -1 and one for +1 (or one for +1 only), the right side's alongside
+    pub face: Vec<FaceModifier>,
+}
+
+pub struct FaceModifier {
+    pub name: String,
+    pub minus: Option<String>,
+    pub plus: String,
+}
+
+/// the face's groups in MakeHuman's modelling modifiers
+const FACE_GROUPS: [&str; 8] = ["forehead", "eyebrows", "eyes", "nose", "mouth", "cheek", "chin", "ears"];
+
+/// MakeHuman's face modifiers from modifiers/modeling_modifiers.json, the right side left out (it follows the left)
+fn face_modifiers(root: &Path) -> Result<Vec<FaceModifier>, String> {
+    let path = root.join("modifiers/modeling_modifiers.json");
+    let text = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let groups: serde_json::Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
+    let mut out = Vec::new();
+    for g in groups.as_array().into_iter().flatten() {
+        let group = g["group"].as_str().unwrap_or("");
+        if !FACE_GROUPS.contains(&group) {
+            continue;
+        }
+        for m in g["modifiers"].as_array().into_iter().flatten() {
+            let t = m["target"].as_str().unwrap_or("");
+            // the right side follows the left; a middle feature moved sideways (nose, mouth: in/out) would break symmetry
+            if t.starts_with("r-") || (!t.starts_with("l-") && m["min"].as_str() == Some("in")) {
+                continue;
+            }
+            let (minus, plus) = match (m["min"].as_str(), m["max"].as_str()) {
+                (Some(a), Some(b)) => (Some(format!("{group}/{t}-{a}.target")), format!("{group}/{t}-{b}.target")),
+                _ => (None, format!("{group}/{t}.target")),
+            };
+            out.push(FaceModifier { name: format!("{t}{}", m["max"].as_str().map_or(String::new(), |b| format!(" {}/{b}", m["min"].as_str().unwrap_or("")))), minus, plus });
+        }
+    }
+    Ok(out)
+}
+
+/// the right side's file for a left side's
+fn right(name: &str) -> Option<String> {
+    let (dir, file) = name.split_once('/')?;
+    file.strip_prefix("l-").map(|f| format!("{dir}/r-{f}"))
 }
 
 impl Targets {
@@ -143,12 +189,21 @@ impl Targets {
         for h in HEADS {
             names.push(format!("head/head-{h}.target"));
         }
+        let face = face_modifiers(root)?;
+        for f in &face {
+            for n in f.minus.iter().chain([&f.plus]) {
+                names.push(n.clone());
+                if let Some(r) = right(n) {
+                    names.push(r);
+                }
+            }
+        }
         let mut by_name = HashMap::new();
         for n in names {
             let t = load_target(root, &n)?;
             by_name.insert(n, t);
         }
-        Ok(Targets { by_name })
+        Ok(Targets { by_name, face })
     }
 
     /// the body's vertices for these values: the base plus every target at its weight
@@ -192,6 +247,17 @@ impl Targets {
         }
         for (h, x) in HEADS.iter().zip(p.heads) {
             add(&format!("head/head-{h}.target"), x);
+        }
+        for (f, x) in self.face.iter().zip(&p.face) {
+            let name = match (&f.minus, *x < 0.0) {
+                (Some(m), true) => m.clone(),
+                (None, true) => continue,
+                _ => f.plus.clone(),
+            };
+            add(&name, x.abs());
+            if let Some(r) = right(&name) {
+                add(&r, x.abs());
+            }
         }
         out
     }
