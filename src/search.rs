@@ -109,24 +109,29 @@ mod tests {
     use super::*;
     use crate::parser::parse;
 
-    fn best(sentence: &str) -> Vec<&'static str> {
+    /// the best path's variant of one rule
+    fn best(sentence: &str, rule: &str) -> &'static str {
         let c = Config::load(crate::config::DEFAULT).unwrap();
         let rules = crate::rules::all();
-        search(&parse(sentence).unwrap(), &c, &rules).remove(0).choices
+        let path = search(&parse(sentence).unwrap(), &c, &rules).remove(0);
+        path.choices[rules.iter().position(|r| r.name() == rule).unwrap()]
     }
 
     #[test]
     fn a_man_gets_no_hourglass() {
-        assert_ne!(best("a man")[4], "hourglass");
+        assert_ne!(best("a man", "torso"), "hourglass");
     }
 
     #[test]
     fn a_muscular_body_is_drawn_defined() {
-        assert_eq!(best("a muscular man")[6], "defined");
+        assert_eq!(best("a muscular man", "tone"), "defined");
     }
 
     #[test]
     fn the_same_request_gives_the_same_path() {
-        assert_eq!(best("a tall slim woman with long arms"), best("a tall slim woman with long arms"));
+        let c = Config::load(crate::config::DEFAULT).unwrap();
+        let rules = crate::rules::all();
+        let r = parse("a tall slim woman with long arms").unwrap();
+        assert_eq!(search(&r, &c, &rules)[0].choices, search(&r, &c, &rules)[0].choices);
     }
 }

@@ -114,6 +114,8 @@ pub struct BuildRow {
 #[serde(deny_unknown_fields)]
 pub struct LearnedCfg {
     pub head_weight: f64,
+    /// MakeHuman's proportions value: unasked, "beautiful", "very beautiful"
+    pub proportions: [f64; 3],
     pub defined_muscle: f64,
     pub tolerance_mm: f64,
 }

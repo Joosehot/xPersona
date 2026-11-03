@@ -51,6 +51,19 @@ pub fn make(sentence: &str, c: &Config, learned: Option<&learn::Learned>, explai
             }
             let made = persona::make(&r, &s, chose(path, "head"), c, l);
             let mut checks = checks::run(&made.mesh, &s, c, 0.01);
+            // "beautiful": the same body made without the word, measured against this one
+            if let Some(k) = &r.ideal {
+                let mut plain = s.clone();
+                plain.ideal = c.learned.proportions[0];
+                let other = persona::make(&r, &plain, chose(path, "head"), c, l);
+                let moved = made.mesh.pos.iter().zip(&other.mesh.pos).map(|(a, b)| ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt() as f64).sum::<f64>() / made.mesh.pos.len() as f64 * 1000.0;
+                let d = |i: usize| (made.got.ratios[i] - other.got.ratios[i]) * s.h * 1000.0;
+                checks.push(checks::Check {
+                    ok: moved >= 1.0,
+                    name: "toward the ideal",
+                    text: format!("\"{}\" moved the skin {moved:.1} mm on average from the same body unasked; legs {:+.0} mm, shoulders {:+.0} mm, chest {:+.0} mm, waist {:+.0} mm, hips {:+.0} mm", k.words, d(0), d(2), d(3), d(4), d(6)),
+                });
+            }
             // the arm span as the made body has it: shoulder to shoulder, and each arm to the fingertip
             let span = made.got.ratios[2] + 2.0 * made.got.ratios[1];
             let [a, b] = c.ranges.arm_span;
@@ -76,6 +89,9 @@ pub fn make(sentence: &str, c: &Config, learned: Option<&learn::Learned>, explai
             let mut text = describe(&r, &s, &made.mesh, &checks, path, &paths, 0.0, explain);
             text += &format!("  model: {}\n", l.report);
             return Ok(Made { text, glb: glb::write(&made.mesh, c.mesh.color, "xPersona") });
+        }
+        if let Some(k) = &r.ideal {
+            return Err(Failure { what: format!("\"{}\" without the learned body", k.words), hint: "the ideal proportions are MakeHuman's; drop --sculpt".into() });
         }
         let field = sdf::Field::new(body::prims(&s, c));
         for &cell in &c.mesh.cells {

@@ -7,6 +7,7 @@ use crate::parser::{PartMod, Request};
 mod build;
 mod fat;
 mod head;
+mod ideal;
 mod parts;
 mod pose;
 mod proportions;
@@ -36,6 +37,8 @@ pub struct Spec {
     pub defined: bool,
     /// arms below the horizontal, degrees
     pub pose_deg: f64,
+    /// MakeHuman's proportions value, 0.5 uncommon to 1 ideal
+    pub ideal: f64,
     /// what each rule did, with the rule's name
     pub steps: Vec<(String, &'static str)>,
 }
@@ -58,6 +61,7 @@ impl Spec {
             fat_hips: 1.0,
             defined: false,
             pose_deg: 0.0,
+            ideal: 0.75,
             steps: Vec::new(),
         }
     }
@@ -104,6 +108,7 @@ pub fn all() -> Vec<Box<dyn Rule>> {
         Box::new(stature::Stature),
         Box::new(build::BuildRule),
         Box::new(proportions::Proportions),
+        Box::new(ideal::Ideal),
         Box::new(fat::Fat),
         Box::new(torso::Torso),
         Box::new(parts::Parts),

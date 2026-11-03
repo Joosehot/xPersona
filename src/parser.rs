@@ -28,6 +28,8 @@ pub struct Request {
     pub parts: Vec<PartMod>,
     pub pose: Option<Said<Pose>>,
     pub profile: Vec<Said<Axis>>,
+    /// "beautiful": 1, or 2 with "very"
+    pub ideal: Option<Said<f64>>,
 }
 
 impl Request {
@@ -207,12 +209,18 @@ pub fn parse(sentence: &str) -> Result<Request, Error> {
                         r.pose = Some(Said { value: *p, words: said.join(" ") });
                     }
                     Tok::Profile(a) => r.profile.push(Said { value: *a, words: said.join(" ") }),
+                    Tok::Ideal => {
+                        if r.ideal.is_some() {
+                            return Err(err(format!("\"{w}\": said twice"), "say it once"));
+                        }
+                        r.ideal = Some(Said { value: strength, words: said.join(" ") });
+                    }
                     Tok::Adj(_) => return Err(err(format!("\"{w}\" what?"), "an adjective goes before a part: \"long arms\", \"broad shoulders\"")),
                     Tok::Part(_) => return Err(err(format!("\"{w}\" without saying how"), format!("say how, e.g. \"long {w}\""))),
                     Tok::Unit(_) => return Err(err(format!("\"{w}\" without a number"), "write a height like \"180 cm\"")),
                     Tok::Very | Tok::Declined(_) => unreachable!(),
                 }
-                if strength != 1.0 && !matches!(tok, Tok::Stature(_) | Tok::Build(_)) {
+                if strength != 1.0 && !matches!(tok, Tok::Stature(_) | Tok::Build(_) | Tok::Ideal) {
                     return Err(err(format!("\"{}\": very what?", said.join(" ")), "\"very\" goes with tall, short, a build or a part: \"very long arms\""));
                 }
                 i += 1;
@@ -248,6 +256,12 @@ mod tests {
         let r = parse("a man 5 feet 10 inches tall").unwrap();
         assert!((r.height.unwrap().value - 1.778).abs() < 1e-9);
         assert!((parse("a 180cm woman").unwrap().height.unwrap().value - 1.8).abs() < 1e-9);
+    }
+
+    #[test]
+    fn beautiful_is_read_with_its_strength() {
+        assert_eq!(parse("a very beautiful woman").unwrap().ideal.unwrap().value, 2.0);
+        assert!(parse("a woman").unwrap().ideal.is_none());
     }
 
     #[test]

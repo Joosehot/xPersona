@@ -77,6 +77,8 @@ pub enum Tok {
     Adj(Adj),
     Pose(Pose),
     Profile(Axis),
+    /// proportions toward MakeHuman's ideal
+    Ideal,
     /// metres per unit
     Unit(f64),
     /// a word xPersona knows and declines, with why
@@ -165,6 +167,9 @@ const WORDS: &[(&str, Tok)] = &[
     ("soft", Tok::Profile(Axis::Softness)),
     ("natural", Tok::Profile(Axis::Balance)),
     ("balanced", Tok::Profile(Axis::Balance)),
+    ("beautiful", Tok::Ideal),
+    ("harmonious", Tok::Ideal),
+    ("well-proportioned", Tok::Ideal),
     ("cm", Tok::Unit(0.01)),
     ("centimetres", Tok::Unit(0.01)),
     ("centimeters", Tok::Unit(0.01)),

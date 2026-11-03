@@ -58,13 +58,13 @@ pub fn make(r: &Request, s: &Spec, head: &str, c: &Config, l: &Learned) -> Made 
     let muscle = (0.5 + (m0 - 0.5) * strength + if s.defined { c.learned.defined_muscle } else { 0.0 }).clamp(0.0, 1.0);
     let weight = (0.5 + (w0 - 0.5) * strength).clamp(0.0, 1.0);
     let gender = 1.0 - s.female;
-    let expected = l.expected(gender, muscle, weight);
+    let expected = l.expected(gender, muscle, weight, s.ideal);
     let f = factors(s, &neutral(r, c));
     let asked: [f64; 9] = std::array::from_fn(|i| expected[i] * f[i]);
     let mut heads = [0.0; 4];
     let hi = ["oval", "round", "square", "long"].iter().position(|x| *x == head).unwrap_or(0);
     heads[hi] = c.learned.head_weight;
-    let shape = l.shape(&inputs(gender, muscle, weight, &asked, &heads));
+    let shape = l.shape(&inputs(gender, muscle, weight, &asked, &heads, s.ideal));
     let body = l.body(&shape, s.h);
     let got = measure(&body, &body.verts);
 

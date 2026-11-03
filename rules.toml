@@ -204,6 +204,8 @@ heads = [6.6, 8.6]
 [learned]
 # how strongly a head shape is put on
 head_weight = 0.7
+# MakeHuman's proportions value (0.5 uncommon .. 1 ideal): unasked (the training bodies' mean), "beautiful", "very beautiful"
+proportions = [0.75, 0.95, 1.0]
 # MakeHuman muscle added when the tone is "defined"
 defined_muscle = 0.1
 # how far a made measure may be from the asked one, millimetres

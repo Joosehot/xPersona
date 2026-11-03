@@ -12,8 +12,8 @@ use neuras::train::net::Model;
 use std::path::Path;
 
 pub const MODEL: &str = "model/persona.bin";
-/// sex, muscle, weight, the measures, the head shapes
-pub const INPUTS: usize = 3 + NAMES.len() + HEADS.len();
+/// sex, muscle, weight, the measures, the head shapes, MakeHuman's proportions
+pub const INPUTS: usize = 3 + NAMES.len() + HEADS.len() + 1;
 const K: usize = 48;
 const OVERSAMPLE: usize = 16;
 const HIDDEN: usize = 256;
@@ -79,10 +79,11 @@ fn normalised(verts: &[V3], ids: &[u32], body_n: usize) -> (Vec<f32>, f64) {
     (out, h)
 }
 
-pub fn inputs(gender: f64, muscle: f64, weight: f64, ratios: &[f64; 9], heads: &[f64; 4]) -> Vec<f64> {
+pub fn inputs(gender: f64, muscle: f64, weight: f64, ratios: &[f64; 9], heads: &[f64; 4], proportions: f64) -> Vec<f64> {
     let mut x = vec![gender, muscle, weight];
     x.extend_from_slice(ratios);
     x.extend_from_slice(heads);
+    x.push(proportions);
     x
 }
 
@@ -154,8 +155,8 @@ pub struct Learned {
     pub scale: Vec<f32>,
     pub in_mean: Vec<f64>,
     pub in_std: Vec<f64>,
-    /// the measures expected for sex, muscle and weight: per measure, coefficients on [1, g, m, w, gm, gw, mw]
-    pub baseline: Vec<[f64; 7]>,
+    /// the measures expected for sex, muscle, weight and proportions: per measure, coefficients on [1, g, m, w, gm, gw, mw, p]
+    pub baseline: Vec<[f64; TERMS]>,
     pub model: Model,
     pub report: String,
     /// the body's quads, and the joints the measures read, as positions in the shape
@@ -164,13 +165,15 @@ pub struct Learned {
     pub body_n: usize,
 }
 
-fn terms(g: f64, m: f64, w: f64) -> [f64; 7] {
-    [1.0, g, m, w, g * m, g * w, m * w]
+const TERMS: usize = 8;
+
+fn terms(g: f64, m: f64, w: f64, p: f64) -> [f64; TERMS] {
+    [1.0, g, m, w, g * m, g * w, m * w, p]
 }
 
 impl Learned {
-    pub fn expected(&self, g: f64, m: f64, w: f64) -> [f64; 9] {
-        let t = terms(g, m, w);
+    pub fn expected(&self, g: f64, m: f64, w: f64, p: f64) -> [f64; 9] {
+        let t = terms(g, m, w, p);
         let mut out = [0.0; 9];
         for (o, c) in out.iter_mut().zip(&self.baseline) {
             *o = c.iter().zip(t).map(|(a, b)| a * b).sum();
@@ -242,7 +245,7 @@ impl Learned {
         let in_mean = get()?.into_iter().map(|x| x as f64).collect();
         let in_std = get()?.into_iter().map(|x| x as f64).collect();
         let flat = get()?;
-        let baseline = flat.chunks(7).map(|c| std::array::from_fn(|i| c[i] as f64)).collect();
+        let baseline = flat.chunks(TERMS).map(|c| std::array::from_fn(|i| c[i] as f64)).collect();
         let mut model = Model::new(&net(), 0);
         for p in model.params.iter_mut() {
             let x = get()?;
@@ -281,7 +284,7 @@ pub fn train(n: usize, log: &mut dyn FnMut(String)) -> Result<Learned, String> {
         let verts = targets.compose(&base, &p);
         let m = measure(&base, &verts);
         let (shape, h) = normalised(&verts, &ids, base.body_n);
-        (shape, inputs(p.gender, p.muscle, p.weight, &m.ratios, &p.heads), h)
+        (shape, inputs(p.gender, p.muscle, p.weight, &m.ratios, &p.heads, p.proportions), h)
     });
     log(format!("{n} bodies made and measured from MakeHuman's targets ({:.0} s)", t0.elapsed().as_secs_f64()));
     let held = n / 10;
@@ -383,29 +386,29 @@ pub fn train(n: usize, log: &mut dyn FnMut(String)) -> Result<Learned, String> {
     // the measures expected for sex, muscle and weight (least squares)
     let mut baseline = Vec::new();
     for j in 0..NAMES.len() {
-        let mut a = [[0f64; 8]; 7];
+        let mut a = [[0f64; TERMS + 1]; TERMS];
         for m in &made[..learn] {
-            let t = terms(m.1[0], m.1[1], m.1[2]);
-            for p in 0..7 {
-                for q in 0..7 {
+            let t = terms(m.1[0], m.1[1], m.1[2], m.1[INPUTS - 1]);
+            for p in 0..TERMS {
+                for q in 0..TERMS {
                     a[p][q] += t[p] * t[q];
                 }
-                a[p][7] += t[p] * m.1[3 + j];
+                a[p][TERMS] += t[p] * m.1[3 + j];
             }
         }
-        for p in 0..7 {
-            let piv = (p..7).max_by(|&i, &k| a[i][p].abs().total_cmp(&a[k][p].abs())).unwrap();
+        for p in 0..TERMS {
+            let piv = (p..TERMS).max_by(|&i, &k| a[i][p].abs().total_cmp(&a[k][p].abs())).unwrap();
             a.swap(p, piv);
-            for i in 0..7 {
+            for i in 0..TERMS {
                 if i != p {
                     let f = a[i][p] / a[p][p];
-                    for q in p..8 {
+                    for q in p..=TERMS {
                         a[i][q] -= f * a[p][q];
                     }
                 }
             }
         }
-        baseline.push(std::array::from_fn(|p| a[p][7] / a[p][p]));
+        baseline.push(std::array::from_fn(|p| a[p][TERMS] / a[p][p]));
     }
 
     // the network, designed and trained with Neuras
