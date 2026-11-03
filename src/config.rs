@@ -21,6 +21,7 @@ pub struct Config {
     pub proportions: BTreeMap<String, f64>,
     pub judges: BTreeMap<String, f64>,
     pub ranges: Ranges,
+    pub learned: LearnedCfg,
 }
 
 #[derive(Deserialize)]
@@ -105,6 +106,16 @@ pub struct BuildRow {
     pub girth: f64,
     pub muscle: f64,
     pub fat: f64,
+    /// MakeHuman's muscle and weight values (0..1, 0.5 average) for the learned body
+    pub makehuman: [f64; 2],
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LearnedCfg {
+    pub head_weight: f64,
+    pub defined_muscle: f64,
+    pub tolerance_mm: f64,
 }
 
 #[derive(Deserialize)]

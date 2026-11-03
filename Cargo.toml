@@ -9,6 +9,8 @@ license = "MIT"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "0.8"
+# the network is designed and trained with Neuras (the owner's engine), used as a library
+neuras = { path = "../Neuras" }
 
 # the field is sampled millions of times; tests would crawl unoptimised
 [profile.dev]

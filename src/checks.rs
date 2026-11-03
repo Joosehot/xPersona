@@ -80,12 +80,25 @@ pub fn run(m: &Mesh, s: &Spec, c: &Config, cell: f64) -> Vec<Check> {
     out.push(check((height - s.h).abs() <= tol, "height", format!("measured {height:.3} m, asked {:.3} m (within {:.0} mm)", s.h, tol * 1000.0)));
     out.push(check(lo[1].abs() <= cell, "on the ground", format!("lowest point {:.1} mm from the floor", lo[1] * 1000.0)));
 
-    // left and right the same: every vertex has its mirror image
-    let key = |x: f64, y: f64, z: f64| ((x * 2000.0).round() as i64, (y * 2000.0).round() as i64, (z * 2000.0).round() as i64);
-    let set: HashSet<(i64, i64, i64)> = m.pos.iter().map(|q| key(q[0] as f64, q[1] as f64, q[2] as f64)).collect();
-    let mirrored = m.pos.iter().filter(|q| set.contains(&key(-(q[0] as f64), q[1] as f64, q[2] as f64))).count();
+    // left and right the same: every vertex has a vertex at its mirror image, within 2 mm
+    const NEAR: f64 = 0.002;
+    let key = |x: f64, y: f64, z: f64| ((x / NEAR).floor() as i64, (y / NEAR).floor() as i64, (z / NEAR).floor() as i64);
+    let mut grid: HashMap<(i64, i64, i64), Vec<[f64; 3]>> = HashMap::new();
+    for q in &m.pos {
+        let p = q.map(|x| x as f64);
+        grid.entry(key(p[0], p[1], p[2])).or_default().push(p);
+    }
+    let mirrored = m
+        .pos
+        .iter()
+        .filter(|q| {
+            let p = [-(q[0] as f64), q[1] as f64, q[2] as f64];
+            let k = key(p[0], p[1], p[2]);
+            (-1..=1).any(|a| (-1..=1).any(|b| (-1..=1).any(|cc| grid.get(&(k.0 + a, k.1 + b, k.2 + cc)).is_some_and(|l| l.iter().any(|r| (0..3).map(|i| (r[i] - p[i]).powi(2)).sum::<f64>() <= NEAR * NEAR)))))
+        })
+        .count();
     let share = mirrored as f64 / m.pos.len() as f64;
-    out.push(check(share > 0.99, "symmetric", format!("{:.2}% of the vertices have their mirror image", share * 100.0)));
+    out.push(check(share > 0.99, "symmetric", format!("{:.2}% of the vertices have a mirror image within 2 mm", share * 100.0)));
 
     // the legs: the crotch is the lowest point of the body's middle above the knees
     let crotch = m.pos.iter().filter(|q| (q[0] as f64).abs() < cell * 0.75 && (q[1] as f64) > 0.3 * height).map(|q| q[1] as f64).fold(f64::MAX, f64::min);

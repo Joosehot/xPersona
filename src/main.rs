@@ -6,6 +6,7 @@ fn main() {
     let mut out = "out/persona.glb".to_string();
     let mut rules: Option<String> = None;
     let mut explain = false;
+    let mut sculpt = false;
     let mut words = Vec::new();
     let mut i = 0;
     while i < args.len() {
@@ -19,6 +20,15 @@ fn main() {
                 rules = args.get(i).cloned();
             }
             "--explain" => explain = true,
+            "--sculpt" => sculpt = true,
+            "--train" => {
+                // --train N: N MakeHuman bodies, the network trained on them, written to model/persona.bin
+                let n = args.get(i + 1).and_then(|w| w.parse().ok()).unwrap_or(3000);
+                let learned = xpersona::learn::train(n, &mut |l| println!("{l}")).unwrap_or_else(|e| fail(&e, ""));
+                learned.save(std::path::Path::new(xpersona::learn::MODEL)).unwrap_or_else(|e| fail(&e, ""));
+                println!("Written: {}", xpersona::learn::MODEL);
+                return;
+            }
             "--vocabulary" => {
                 println!("{}", xpersona::lexicon::all().join(" "));
                 return;
@@ -35,7 +45,9 @@ fn main() {
     if words.is_empty() {
         fail("nothing to make", "xpersona \"a tall slim woman with long arms\"");
     }
-    match xpersona::make(&words.join(" "), &c, explain) {
+    // the learned body when the model is there, unless --sculpt asks for the rules' own
+    let learned = if sculpt { None } else { Some(xpersona::learn::Learned::load(std::path::Path::new(xpersona::learn::MODEL)).unwrap_or_else(|e| fail(&e, "or use --sculpt for the body sculpted by the rules alone"))) };
+    match xpersona::make(&words.join(" "), &c, learned.as_ref(), explain) {
         Ok(m) => {
             if let Some(dir) = std::path::Path::new(&out).parent() {
                 let _ = std::fs::create_dir_all(dir);

@@ -77,38 +77,47 @@ small = 0.93
 girth = 0.85
 muscle = 0.0
 fat = 0.0
+makehuman = [0.4, 0.05]
 [build.slim]
 girth = 0.90
 muscle = 0.1
 fat = 0.0
+makehuman = [0.45, 0.25]
 [build.lean]
 girth = 0.93
 muscle = 0.4
 fat = 0.0
+makehuman = [0.6, 0.3]
 [build.average]
 girth = 1.0
 muscle = 0.3
 fat = 0.25
+makehuman = [0.5, 0.5]
 [build.athletic]
 girth = 1.0
 muscle = 0.7
 fat = 0.05
+makehuman = [0.7, 0.45]
 [build.muscular]
 girth = 1.07
 muscle = 1.0
 fat = 0.1
+makehuman = [0.9, 0.55]
 [build.stocky]
 girth = 1.10
 muscle = 0.5
 fat = 0.5
+makehuman = [0.6, 0.75]
 [build.curvy]
 girth = 1.04
 muscle = 0.2
 fat = 0.6
+makehuman = [0.4, 0.7]
 [build.heavy]
 girth = 1.14
 muscle = 0.3
 fat = 1.0
+makehuman = [0.45, 0.95]
 
 [blend]
 torso = 0.022
@@ -166,8 +175,8 @@ long = [-0.004, 0.0, 0.033]
 square = [0.002, 0.0, 0.044]
 
 [pose]
-# arms below the horizontal, degrees
-a_pose = 40.0
+# arms below the horizontal, degrees (MakeHuman's template stands at about 50)
+a_pose = 50.0
 t_pose = 0.0
 
 [proportions]
@@ -190,3 +199,12 @@ against_the_asked_legs = -0.5
 legs = [0.42, 0.51]
 arm_span = [0.93, 1.10]
 heads = [6.6, 8.6]
+
+# the learned body (model/persona.bin, trained by `xpersona --train`)
+[learned]
+# how strongly a head shape is put on
+head_weight = 0.7
+# MakeHuman muscle added when the tone is "defined"
+defined_muscle = 0.1
+# how far a made measure may be from the asked one, millimetres
+tolerance_mm = 20.0
