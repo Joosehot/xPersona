@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>xPersona viewer</title>
+<style>
+  :root { --bg: #e9e7e3; --ink: #2a2d31; --muted: #5d636a; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #1b1d20; --ink: #e6e6e3; --muted: #a2a7ad; } }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font: 14px/1.4 system-ui, sans-serif; }
+  canvas { display: block; }
+  #bar { position: fixed; left: 12px; top: 10px; right: 12px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  #bar button { font: inherit; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--muted); background: transparent; color: var(--ink); cursor: pointer; }
+  #name { color: var(--muted); }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="bar">
+  <strong>xPersona</strong>
+  <span id="name"></span>
+  <button data-view="front">Front</button>
+  <button data-view="side">Side</button>
+  <button data-view="back">Back</button>
+  <button data-view="three">3/4</button>
+  <span id="name2" class="muted">drop a .glb here, or ?file=path</span>
+</div>
+<script type="module">
+import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+const params = new URLSearchParams(location.search);
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(devicePixelRatio);
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.append(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(getComputedStyle(document.documentElement).getPropertyValue("--bg").trim());
+scene.add(new THREE.HemisphereLight(0xffffff, 0x8a8178, 1.4));
+const key = new THREE.DirectionalLight(0xffffff, 2.2);
+key.position.set(1.5, 3, 2.5);
+scene.add(key);
+const rim = new THREE.DirectionalLight(0xffffff, 0.8);
+rim.position.set(-2, 2, -2);
+scene.add(rim);
+const floor = new THREE.Mesh(new THREE.CircleGeometry(0.8, 64), new THREE.MeshStandardMaterial({ color: 0x9c968f, roughness: 1 }));
+floor.rotation.x = -Math.PI / 2;
+scene.add(floor);
+
+const camera = new THREE.PerspectiveCamera(30, innerWidth / innerHeight, 0.05, 50);
+const controls = new OrbitControls(camera, renderer.domElement);
+let height = 1.7;
+
+function view(name) {
+  const t = new THREE.Vector3(0, height * 0.52, 0);
+  const d = height * 2.3;
+  const dir = { front: [0, 0, 1], side: [1, 0, 0], back: [0, 0, -1], three: [0.7, 0.1, 0.7] }[name] || [0, 0, 1];
+  camera.position.set(dir[0] * d, t.y + dir[1] * d, dir[2] * d);
+  controls.target.copy(t);
+  controls.update();
+}
+document.querySelectorAll("[data-view]").forEach(b => b.onclick = () => view(b.dataset.view));
+
+let current = null;
+function show(gltf, name) {
+  if (current) scene.remove(current);
+  current = gltf.scene;
+  scene.add(current);
+  const box = new THREE.Box3().setFromObject(current);
+  height = box.max.y - box.min.y;
+  document.getElementById("name").textContent = `${name} · ${height.toFixed(3)} m`;
+  view(params.get("view") || "three");
+  document.body.dataset.ready = "1";
+}
+const loader = new GLTFLoader();
+const file = params.get("file");
+if (file) loader.load(file, g => show(g, file.split("/").pop()), undefined, e => { document.getElementById("name").textContent = "could not load " + file; });
+
+addEventListener("dragover", e => e.preventDefault());
+addEventListener("drop", async e => {
+  e.preventDefault();
+  const f = e.dataTransfer.files[0];
+  if (f) loader.parse(await f.arrayBuffer(), "", g => show(g, f.name));
+});
+addEventListener("resize", () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+renderer.setAnimationLoop(() => renderer.render(scene, camera));
+</script>
+</body>
+</html>

@@ -1,0 +1,192 @@
+# xPersona's taste and measurements. Every number the engine uses is here; the rules hold only logic.
+# Lengths are fractions of the body's height unless they say metres.
+
+[search]
+beam = 12
+finalists = 4
+
+[profile]
+# definition · softness · balance
+default = [0.3, 0.3, 0.4]
+# how far a word moves the profile
+word = 0.5
+# how far a build moves it (muscular toward definition, heavy toward softness)
+build = 0.3
+
+[stature]
+# adult means, metres
+male = 1.76
+female = 1.63
+neutral = 1.70
+# one "tall" or "short", metres; "very" doubles it
+step = 0.09
+least = 1.40
+most = 2.10
+
+# Segment lengths after Drillis & Contini (1966), as fractions of height: from the floor up to the head's top.
+[chain]
+ankle = 0.039
+shank = 0.246
+thigh = 0.245
+torso = 0.288
+neck = 0.052
+head = 0.130
+upper_arm = 0.186
+forearm = 0.146
+hand = 0.108
+foot = 0.152
+
+# Widths and depths as fractions of height: shoulders over the deltoids, the rest skin to skin.
+[width.male]
+shoulders = 0.259
+chest = 0.180
+chest_depth = 0.135
+waist = 0.150
+waist_depth = 0.112
+hips = 0.191
+hips_depth = 0.120
+neck = 0.034
+head = 0.088
+head_depth = 0.112
+
+[width.female]
+shoulders = 0.232
+chest = 0.165
+chest_depth = 0.125
+waist = 0.135
+waist_depth = 0.100
+hips = 0.206
+hips_depth = 0.128
+neck = 0.030
+head = 0.086
+head_depth = 0.108
+
+# one "long", "broad", ... ; "very" doubles the step
+[modifiers]
+long = 1.07
+short = 0.93
+broad = 1.08
+narrow = 0.92
+thick = 1.14
+thin = 0.88
+big = 1.07
+small = 0.93
+
+# girth: flesh on everything; muscle and fat: how much of each shows
+[build.thin]
+girth = 0.85
+muscle = 0.0
+fat = 0.0
+[build.slim]
+girth = 0.90
+muscle = 0.1
+fat = 0.0
+[build.lean]
+girth = 0.93
+muscle = 0.4
+fat = 0.0
+[build.average]
+girth = 1.0
+muscle = 0.3
+fat = 0.25
+[build.athletic]
+girth = 1.0
+muscle = 0.7
+fat = 0.05
+[build.muscular]
+girth = 1.07
+muscle = 1.0
+fat = 0.1
+[build.stocky]
+girth = 1.10
+muscle = 0.5
+fat = 0.5
+[build.curvy]
+girth = 1.04
+muscle = 0.2
+fat = 0.6
+[build.heavy]
+girth = 1.14
+muscle = 0.3
+fat = 1.0
+
+[blend]
+torso = 0.022
+limb = 0.012
+detail = 0.005
+
+[mesh]
+# grid steps in metres, tried in order until one passes the checks
+cells = [0.006, 0.005, 0.007]
+color = [0.78, 0.72, 0.66]
+
+# Each rule's variants, scored on definition · softness · balance.
+[variants.proportions]
+even = [0.2, 0.2, 0.9]
+long_legs = [0.5, 0.2, 0.5]
+long_torso = [0.2, 0.5, 0.4]
+
+[variants.fat]
+even = [0.2, 0.5, 0.8]
+central = [0.1, 0.7, 0.4]
+lower = [0.1, 0.8, 0.4]
+
+[variants.torso]
+straight = [0.2, 0.3, 0.8]
+v_taper = [0.9, 0.1, 0.4]
+pear = [0.1, 0.7, 0.4]
+hourglass = [0.4, 0.6, 0.5]
+
+[variants.tone]
+smooth = [0.1, 0.8, 0.6]
+defined = [0.9, 0.1, 0.5]
+
+[variants.head]
+oval = [0.3, 0.3, 0.9]
+round = [0.1, 0.8, 0.4]
+long = [0.5, 0.2, 0.4]
+square = [0.8, 0.1, 0.4]
+
+[variants.pose]
+a_pose = [0.4, 0.4, 0.9]
+t_pose = [0.4, 0.4, 0.5]
+
+# how each torso shape changes chest · waist · hips
+[torso]
+straight = [1.0, 1.06, 1.0]
+v_taper = [1.06, 0.95, 0.97]
+pear = [0.96, 1.0, 1.06]
+hourglass = [1.03, 0.88, 1.04]
+
+[head]
+# width · depth · jaw width, fractions of height (the head's height is the chain's)
+oval = [0.0, 0.0, 0.036]
+round = [0.006, -0.004, 0.040]
+long = [-0.004, 0.0, 0.033]
+square = [0.002, 0.0, 0.044]
+
+[pose]
+# arms below the horizontal, degrees
+a_pose = 40.0
+t_pose = 0.0
+
+[proportions]
+long_legs = 1.025
+long_torso = 1.03
+
+[judges]
+hourglass_on_a_man = -1.0
+pear_on_a_man = -0.6
+v_taper_on_a_woman = -0.4
+asked_broad_shoulders = 0.5
+asked_broad_hips = 0.5
+asked_narrow_waist = 0.4
+defined_and_heavy = -0.6
+smooth_and_muscular = -0.8
+against_the_asked_legs = -0.5
+
+# what a human body can be: the checks hold every result to these
+[ranges]
+legs = [0.42, 0.51]
+arm_span = [0.93, 1.10]
+heads = [6.6, 8.6]
